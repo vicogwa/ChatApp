@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ room.name }} | {% endblock %}
+
+{% block content %}
+<div class="p-10 lg:p-20 text-center">
+    <h1 class="text-3xl lg:text-6xl text-white">{{ room.name }}</h1>
+</div>
+
+<div class="lg:w-2/4 mx-4 lg:mx-auto p-4 bg-white rounded-xl">
+    <div class="chat-messages space-y-3 h-64 overflow-y-auto" id="chat-messages">
+        {% for m in messages %}
+            <div>
+                <b>{{ m.user.username }}</b>: {{ m.content }}
+            </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="lg:w-2/4 mt-6 mx-4 lg:mx-auto p-4 bg-white rounded-xl">
+    <form method="post" action="." class="flex">
+        {% csrf_token %}
+        <input type="text" name="content" class="flex-1 mr-3" placeholder="Your message..." id="chat-message-input">
+        <button 
+            class="px-5 py-3 rounded-xl text-white bg-teal-600 hover:bg-teal-700"
+            id="chat-message-submit"
+        >Enter</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ room.slug|json_script:"json-roomname" }}
+{{ request.user.username|json_script:"json-username" }}
+
+<script>
+    const roomName = JSON.parse(document.getElementById('json-roomname').textContent);
+    const username = JSON.parse(document.getElementById('json-username').textContent);
+    const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+    const wsUrl = `${wsScheme}://${window.location.host}/ws/${roomName}`;
+
+    console.log('Connecting to WebSocket URL:', wsUrl);
+
+    const chatSocket = new WebSocket(wsUrl);
+
+    chatSocket.onopen = function(e) {
+        console.log('WebSocket connection established.');
+        document.querySelector('#chat-message-input').focus();
+    };
+
+    chatSocket.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+        console.log('Received message:', data);
+        // Handle the received message (update chat messages UI)
+        const chatMessages = document.querySelector('#chat-messages');
+        const messageElement = document.createElement('div');
+        messageElement.textContent = `${data.username}: ${data.message}`;
+        chatMessages.appendChild(messageElement);
+    };
+
+    chatSocket.onerror = function(e) {
+        console.error('WebSocket error:', e);
+    };
+
+    chatSocket.onclose = function(e) {
+        console.warn('WebSocket connection closed unexpectedly.', e);
+    };
+
+    document.querySelector('#chat-message-input').onkeyup = function(e) {
+        if (e.key === 'Enter') {
+            const messageInputDom = document.querySelector('#chat-message-input');
+            const message = messageInputDom.value.trim();
+            if (message) {
+                chatSocket.send(JSON.stringify({
+                    'message': message,
+                    'username': username,
+                    'room': roomName
+                }));
+                messageInputDom.value = '';
+            }
+        }
+    };
+</script>
+{% endblock %}
